@@ -30,7 +30,8 @@ public class PathFinder
 
         IndexedPriorityQueue<PathNode> visitingNodes = new IndexedPriorityQueue<PathNode>(allNodes.Count);
         HashSet<PathNode> visitingNodesHashSet = new HashSet<PathNode>();
-        Dictionary<PathNode, List<string>> neighbourIds = GetNeighbourIds(allNodes);
+        //Dictionary<PathNode, List<string>> neighbourIds = GetNeighbourIds(allNodes);
+        Dictionary<PathNode, List<string>> neighbourIds = GetNeighbourIdsFromCache(allNodes);
 
         visitingNodes.Add(startNode);
         visitingNodesHashSet.Add(startNode);
@@ -109,6 +110,18 @@ public class PathFinder
         }
 
         return startNode;
+    }
+
+    private Dictionary<PathNode, List<string>> GetNeighbourIdsFromCache(Dictionary<string, PathNode> allNodes)
+    {
+        Dictionary<PathNode, List<string>> allNeighbourIds = new Dictionary<PathNode, List<string>>();
+        foreach (PathNode node in allNodes.Values)
+        {
+            List<string> neighbourIds = GameMaster.Instance.GetNeighbourIds(node.AnchorHandler.AnchorId);
+            allNeighbourIds.Add(node, neighbourIds);
+        }
+
+        return allNeighbourIds;
     }
 
     private Dictionary<PathNode, List<string>> GetNeighbourIds(Dictionary<string, PathNode> allNodes)

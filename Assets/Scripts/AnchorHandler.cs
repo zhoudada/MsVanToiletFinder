@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.WSA;
 
-public class AnchorHandler : MonoBehaviour
+public class AnchorHandler : MonoBehaviour, ISelectableObject
 {
     [SerializeField]
     private Transform anchorTransform;
@@ -20,6 +20,9 @@ public class AnchorHandler : MonoBehaviour
     private GameObject editPanel;
 
     [SerializeField]
+    private EditableText editableText;
+
+    [SerializeField]
     private List<GameObject> coloredObjects;
 
     [SerializeField]
@@ -30,6 +33,12 @@ public class AnchorHandler : MonoBehaviour
 
     [SerializeField]
     private Material locationLostColor;
+
+    [SerializeField]
+    private Material singleSelectedColor;
+
+    [SerializeField]
+    private Material multiSelectedColor;
 
     [SerializeField]
     private EditableText nameLabel;
@@ -43,6 +52,8 @@ public class AnchorHandler : MonoBehaviour
     public bool IsLocated { get { return Anchor.isLocated; } }
     public Transform AnchorVisualTransform { get { return anchorVisual; } }
     public AnchorTrackingState TrackingState { get; private set; } = AnchorTrackingState.Lost;
+    SelectedState selectedState = SelectedState.NotSelected;
+    private List<MeshRenderer> meshRenderers = new List<MeshRenderer>();
 
     public void Initialize(string id, string name)
     {
@@ -53,6 +64,10 @@ public class AnchorHandler : MonoBehaviour
         GameMaster.Instance.GameModeChangedEvent.AddListener(OnGameModeChanged);
         nameLabel.UpdateText(name);
         nameLabel.EditingCompletionEvent.AddListener(UpdateName);
+        foreach (GameObject coloredObject in coloredObjects)
+        {
+            meshRenderers.Add(coloredObject.GetComponent<MeshRenderer>());
+        }
     }
 
     private void OnGameModeChanged(GameMode currentMode)
@@ -60,10 +75,16 @@ public class AnchorHandler : MonoBehaviour
         if (currentMode == GameMode.Editing)
         {
             editPanel.SetActive(true);
+            editableText.EnableEdit();
+            anchorIdText.gameObject.SetActive(true);
+            ShowMesh();
         }
-        else if (currentMode == GameMode.Release)
+        else
         {
             editPanel.SetActive(false);
+            editableText.DisableEdit();
+            anchorIdText.gameObject.SetActive(false);
+            HideMesh();
         }
     }
 
@@ -75,6 +96,12 @@ public class AnchorHandler : MonoBehaviour
 
     public void OnDelete()
     {
+        if (!GameMaster.Instance.AllowDeleteAnchor())
+        {
+            Debug.Log("Deleting anchor is not allowed for now.");
+            return;
+        }
+
         nameLabel.EditingCompletionEvent.RemoveListener(UpdateName);
         GameMaster.Instance.GameModeChangedEvent.RemoveListener(OnGameModeChanged);
         GameMaster.Instance.DeleteAnchor(AnchorId);
@@ -120,7 +147,15 @@ public class AnchorHandler : MonoBehaviour
     private void UpdateColor()
     {
         Material color;
-        if (TrackingState == AnchorTrackingState.Located)
+        if (selectedState == SelectedState.SingleSelected)
+        {
+            color = singleSelectedColor;
+        }
+        else if (selectedState == SelectedState.MultiSelected)
+        {
+            color = multiSelectedColor;
+        }
+        else if (TrackingState == AnchorTrackingState.Located)
         {
             color = locatedColor;
         }
@@ -136,7 +171,7 @@ public class AnchorHandler : MonoBehaviour
         int count = coloredObjects.Count;
         for (int index = 0; index < count; index++)
         {
-            coloredObjects[index].GetComponent<MeshRenderer>().material = color;
+            meshRenderers[index].material = color;
         }
     }
 
@@ -154,5 +189,41 @@ public class AnchorHandler : MonoBehaviour
         }
 
         UpdateColor();
+    }
+
+    public void HideMesh()
+    {
+        foreach (MeshRenderer renderer in meshRenderers)
+        {
+            renderer.enabled = false;
+        }
+    }
+
+    public void ShowMesh()
+    {
+        foreach (MeshRenderer renderer in meshRenderers)
+        {
+            renderer.enabled = true;
+        }
+    }
+
+    public void OnSingleSelected()
+    {
+        selectedState = SelectedState.SingleSelected;
+    }
+
+    public void OnSingleUnselected()
+    {
+        selectedState = SelectedState.NotSelected;
+    }
+
+    public void OnMultiSelected()
+    {
+        selectedState = SelectedState.MultiSelected;
+    }
+
+    public void OnMultiUnselected()
+    {
+        selectedState = SelectedState.NotSelected;
     }
 }

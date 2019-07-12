@@ -22,10 +22,13 @@ public class EditableText: MonoBehaviour
 
     public string Text { get { return textField.text; } }
 
+    private bool isEditing;
+
     public void StartEditing()
     {
         SetEditingUI();
         KeyboardManager.Instance.Show(transform.position, Text);
+        isEditing = true;
     }
 
     public void OnComplete()
@@ -33,6 +36,7 @@ public class EditableText: MonoBehaviour
         textField.text = KeyboardManager.Instance.OnComplete();
         SetIdleUI();
         EditingCompletionEvent.Invoke(textField.text);
+        isEditing = false;
     }
 
     public void UpdateText(string text)
@@ -44,6 +48,27 @@ public class EditableText: MonoBehaviour
     {
         KeyboardManager.Instance.OnComplete();
         SetIdleUI();
+        isEditing = false;
+    }
+
+    public void EnableEdit()
+    {
+        if (isEditing)
+        {
+            return;
+        }
+
+        editButton.gameObject.SetActive(true);
+    }
+
+    public void DisableEdit()
+    {
+        if (isEditing)
+        {
+            return;
+        }
+
+        editButton.gameObject.SetActive(false);
     }
 
     private void SetEditingUI()

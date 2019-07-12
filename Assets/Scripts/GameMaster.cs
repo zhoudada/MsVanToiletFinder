@@ -11,6 +11,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Formatters.Binary;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.Events;
 using UnityEngine.UI;
@@ -23,6 +24,9 @@ public class GameMaster : MonoBehaviour
 
     [SerializeField]
     private InteractableToggleCollection gameModeSelection;
+
+    [SerializeField]
+    private InteractableToggleCollection editingActionSelection;
 
     [SerializeField]
     private GameObject anchorGameObjectPrefab;
@@ -53,10 +57,19 @@ public class GameMaster : MonoBehaviour
     private PathFinder pathFinder = new PathFinder();
     private TouchScreenKeyboard keyboard;
     private GazeProvider gazeProvider;
+    private IMixedRealitySpatialAwarenessMeshObserver spatialMeshObserver;
+    private Task updateNeighbourTask;
+    private SelectionManager selectionManager = new SelectionManager();
+    private int editingActionIndex;
 
     private GameMode CurrentGameMode
     {
         get { return (GameMode)currentModeIndex; }
+    }
+
+    private EditingAction CurrentEditingAction
+    {
+        get { return (EditingAction)editingActionIndex; }
     }
 
     void Awake()
@@ -80,9 +93,11 @@ public class GameMaster : MonoBehaviour
     void Start()
     {
         gameModeSelection.OnSelectionEvents.AddListener(OnGameModeChanged);
+        editingActionSelection.OnSelectionEvents.AddListener(OnEditingActionChanged);
         LoadGraphInfo();
         WorldAnchorStore.GetAsync(OnAnchorStoreLoaded);
         gazeProvider = CameraCache.Main.GetComponent<GazeProvider>();
+        spatialMeshObserver = MixedRealityToolkit.Instance.GetService<IMixedRealitySpatialAwarenessMeshObserver>();
     }
 
     void Update()
@@ -94,14 +109,45 @@ public class GameMaster : MonoBehaviour
         if (CurrentGameMode == GameMode.Editing)
         {
             GameObject target = gazeProvider.GazeTarget;
-            if (target != null && target.GetComponent<IMixedRealityFocusHandler>() != null)
-            {
-                return;
-            }
 
-            if (target == null || Vector3.Distance(target.transform.position, cameraTransform.position) > 1)
+            if (CurrentEditingAction == EditingAction.PlaceAnchor)
             {
-                CreateAnchor();
+                if (target != null && target.GetComponent<IMixedRealityFocusHandler>() != null)
+                {
+                    return;
+                }
+
+                if (target == null || Vector3.Distance(target.transform.position, cameraTransform.position) > 1)
+                {
+                    CreateAnchor();
+                }
+            }
+            else if (CurrentEditingAction == EditingAction.ShowNeighbours)
+            {
+                if (target == null)
+                {
+                    return;
+                }
+
+                AnchorHandler selectedAnchor = target.GetComponentInParent<AnchorHandler>();
+                if (selectedAnchor == null)
+                {
+                    return;
+                }
+
+                if (selectionManager.SingleSelectedObject == selectedAnchor)
+                {
+                    return;
+                }
+
+                ResetSelection();
+
+                selectionManager.SingleSelect(selectedAnchor);
+                foreach (string neighbourId in graphInfo.Nodes[selectedAnchor.AnchorId].NeighbourIds)
+                {
+                    AnchorHandler neighbour = existingAnchors[neighbourId];
+                    selectionManager.MultiSelect(neighbour);
+                }
             }
         }
     }
@@ -130,6 +176,17 @@ public class GameMaster : MonoBehaviour
         if (graphInfo.Nodes.TryGetValue(anchorId, out node))
         {
             return node.OffsetList;
+        }
+
+        return null;
+    }
+
+    public List<string> GetNeighbourIds(string anchorId)
+    {
+        GraphNode node;
+        if (graphInfo.Nodes.TryGetValue(anchorId, out node))
+        {
+            return node.NeighbourIds;
         }
 
         return null;
@@ -205,6 +262,24 @@ public class GameMaster : MonoBehaviour
         controlPanel[newModeIndex].SetActive(true);
         currentModeIndex = newModeIndex;
         GameModeChangedEvent.Invoke(CurrentGameMode);
+        selectionManager.Reset();
+    }
+
+    private void OnEditingActionChanged()
+    {
+        int newActionIndex = editingActionSelection.CurrentIndex;
+        if (newActionIndex == editingActionIndex)
+        {
+            return;
+        }
+
+        editingActionIndex = newActionIndex;
+        selectionManager.Reset();
+    }
+
+    public void ResetSelection()
+    {
+        selectionManager.Reset();
     }
 
     public void ClearAllAnchors()
@@ -242,8 +317,14 @@ public class GameMaster : MonoBehaviour
             return null;
         }
 
+        if (updateNeighbourTask != null && !updateNeighbourTask.IsCompleted)
+        {
+            Debug.Log("Anchor creation task is not finished.");
+            return null;
+        }
+
         string id = Guid.NewGuid().ToString();
-        Vector3 position = cameraTransform.TransformPoint(Vector3.forward);
+        Vector3 position = cameraTransform.TransformPoint(1.1f * Vector3.forward);
         GameObject anchorGameObject = Instantiate(anchorGameObjectPrefab, position, cameraTransform.rotation);
         anchorGameObject.transform.up = Vector3.up;
         AnchorHandler anchorHandler = anchorGameObject.GetComponent<AnchorHandler>();
@@ -286,6 +367,11 @@ public class GameMaster : MonoBehaviour
         return anchorHandler;
     }
 
+    public bool AllowDeleteAnchor()
+    {
+        return updateNeighbourTask == null || updateNeighbourTask.IsCompleted;
+    }
+
     public void DeleteAnchor(string id)
     {
         if (anchorStore == null)
@@ -305,6 +391,7 @@ public class GameMaster : MonoBehaviour
     {
         SaveGraphInfo();
         gameModeSelection.OnSelectionEvents.RemoveListener(OnGameModeChanged);
+        editingActionSelection.OnSelectionEvents.RemoveListener(OnEditingActionChanged);
 
         foreach (AnchorHandler handler in existingAnchors.Values)
         {
@@ -449,9 +536,11 @@ public class GameMaster : MonoBehaviour
 
         List<AnchorHandler> locatedAnchors = GetLocatedAnchors();
         // The newly created anchor will always show isLocated = false, so we need to manually add it to the locatedAnchors list.
-        locatedAnchors.Add(existingAnchors[idCreated]);
+        AnchorHandler anchorHandler = existingAnchors[idCreated];
+        locatedAnchors.Add(anchorHandler);
         ResetLocatedNodes(locatedAnchors);
         UpdateOffsetList(locatedAnchors);
+        updateNeighbourTask = UpdateNeighbourOnCreationAsync(anchorHandler);
 
         foreach (GraphNode node in graphInfo.Nodes.Values)
         {
@@ -460,6 +549,93 @@ public class GameMaster : MonoBehaviour
         }
 
         SaveGraphInfo();
+    }
+
+    private async Task UpdateNeighbourOnCreationAsync(AnchorHandler anchorHandler)
+    {
+        await Task.Delay(TimeSpan.FromSeconds(spatialMeshObserver.UpdateInterval));
+
+        List<string> neighbourIds = new List<string>();
+
+        Vector3 anchorPosition = anchorHandler.AnchorVisualTransform.position;
+        float observerBoundDistance = spatialMeshObserver.ObservationExtents.x;
+        List<AnchorHandler> surroundingAnchors = new List<AnchorHandler>();
+        foreach (AnchorHandler otherAnchorHandler in existingAnchors.Values)
+        {
+            if (otherAnchorHandler.AnchorId == anchorHandler.AnchorId ||
+                otherAnchorHandler.TrackingState == AnchorTrackingState.Lost ||
+                Vector3.Distance(otherAnchorHandler.AnchorVisualTransform.position, anchorPosition) > observerBoundDistance)
+            {
+                continue;
+            }
+
+            surroundingAnchors.Add(otherAnchorHandler);
+        }
+
+        const float verticalMaxDistance = 100f;
+        const float raycastOriginOffset = 0.5f;
+        int layerMask = spatialMeshObserver.MeshPhysicsLayerMask;
+        bool raycastBottom = true;
+        bool raycastTop = true;
+
+        RaycastHit hitFloor;
+        if (Physics.Raycast(anchorPosition, Vector3.down, out hitFloor, verticalMaxDistance, layerMask,
+            QueryTriggerInteraction.Ignore))
+        {
+            raycastBottom = hitFloor.distance > raycastOriginOffset;
+        }
+
+        RaycastHit hitCeiling;
+        if (Physics.Raycast(anchorPosition, Vector3.up, out hitCeiling, verticalMaxDistance, layerMask,
+            QueryTriggerInteraction.Ignore))
+        {
+            raycastTop = hitFloor.distance > raycastOriginOffset;
+        }
+
+        foreach (AnchorHandler otherAnchorHandler in surroundingAnchors)
+        {
+            Vector3 direction = otherAnchorHandler.AnchorVisualTransform.position - anchorPosition;
+            if (raycastBottom)
+            {
+                Vector3 bottomPosition = anchorPosition + Vector3.down * raycastOriginOffset;
+                if (CheckNodesBlocked(bottomPosition, direction, layerMask))
+                {
+                    continue;
+                }
+            }
+            if (raycastTop)
+            {
+                Vector3 topPosition = anchorPosition + Vector3.up * raycastOriginOffset;
+                if (CheckNodesBlocked(topPosition, direction, layerMask))
+                {
+                    continue;
+                }
+            }
+
+            if (CheckNodesBlocked(anchorPosition, direction, layerMask))
+            {
+                continue;
+            }
+
+            neighbourIds.Add(otherAnchorHandler.AnchorId);
+            GraphNode otherNode = graphInfo.Nodes[otherAnchorHandler.AnchorId];
+            if (otherNode.NeighbourIds == null)
+            {
+                otherNode.NeighbourIds = new List<string>();
+            }
+            otherNode.NeighbourIds.Add(anchorHandler.AnchorId);
+        }
+
+        graphInfo.Nodes[anchorHandler.AnchorId].NeighbourIds = neighbourIds;
+        SaveGraphInfo();
+    }
+
+    private bool CheckNodesBlocked(Vector3 origin, Vector3 direction, int layerMask)
+    {
+        float maxDistance = direction.magnitude;
+        Vector3 destination = origin + direction;
+        return Physics.Raycast(origin, direction, maxDistance, layerMask, QueryTriggerInteraction.Ignore) ||
+            Physics.Raycast(destination, -direction, maxDistance, layerMask, QueryTriggerInteraction.Ignore);
     }
 
     private void UpdateGraphInfoOnRemoval(string idRemoved)
@@ -481,6 +657,11 @@ public class GameMaster : MonoBehaviour
 
         foreach (GraphNode node in graphInfo.Nodes.Values)
         {
+            if (node.NeighbourIds != null)
+            {
+                node.NeighbourIds.Remove(idRemoved);
+            }
+
             if (node.OffsetList.Count == 0)
             {
                 continue;
@@ -556,6 +737,11 @@ public class GameMaster : MonoBehaviour
         pathFinder.Find(currentPosition, endAnchorId);
         List<AnchorHandler> paths = pathFinder.Paths;
         RenderPath(paths);
+    }
+
+    public void ClearRenderedPath()
+    {
+        pathRenderer.positionCount = 0;
     }
 
     private void RenderPath(List<AnchorHandler> paths)

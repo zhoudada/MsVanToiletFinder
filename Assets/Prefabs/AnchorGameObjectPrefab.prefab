@@ -80,6 +80,7 @@ MonoBehaviour:
   anchorIdText: {fileID: 1128432135778523238}
   anchorVisual: {fileID: 1128432135065492661}
   editPanel: {fileID: 228207665753764483}
+  editableText: {fileID: 1603878526487275093}
   coloredObjects:
   - {fileID: 1128432134207011566}
   - {fileID: 1128432135433572969}
@@ -87,6 +88,8 @@ MonoBehaviour:
   locationDeducedColor: {fileID: 2100000, guid: 91bb1b18d7f532042a546b965c43536e,
     type: 2}
   locationLostColor: {fileID: 2100000, guid: 3bc57b26636b2e6478c9dd2f95e0c4d4, type: 2}
+  singleSelectedColor: {fileID: 2100000, guid: 0c20da99d788c724383f23977b523725, type: 2}
+  multiSelectedColor: {fileID: 2100000, guid: f546ecb81003a084ea94bb7b6a63556b, type: 2}
   nameLabel: {fileID: 1603878526487275093}
 --- !u!1 &1128432134207011566
 GameObject:
