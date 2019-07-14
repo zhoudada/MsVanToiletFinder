@@ -43,6 +43,9 @@ public class GameMaster : MonoBehaviour
     [SerializeField]
     private EditableText destinationName;
 
+    [SerializeField]
+    private EditingActionButtonControl editingActionButtonControl;
+
     public GameModeChangedEventType GameModeChangedEvent = new GameModeChangedEventType();
 
     public Dictionary<string, AnchorHandler> ExistingAnchors { get { return existingAnchors; } }
@@ -61,6 +64,7 @@ public class GameMaster : MonoBehaviour
     private Task updateNeighbourTask;
     private SelectionManager selectionManager = new SelectionManager();
     private int editingActionIndex;
+    private NeighbourManager neighbourManager;
 
     private GameMode CurrentGameMode
     {
@@ -87,6 +91,7 @@ public class GameMaster : MonoBehaviour
         //Debug.Log($"Check persistent data path exists: {Application.persistentDataPath}.");
         //Directory.CreateDirectory(Application.persistentDataPath);
         graphInfoFilePath = Path.Combine(Application.persistentDataPath, graphInfoFileName);
+        neighbourManager =  new NeighbourManager(selectionManager);
     }
 
     // Start is called before the first frame update
@@ -122,7 +127,7 @@ public class GameMaster : MonoBehaviour
                     CreateAnchor();
                 }
             }
-            else if (CurrentEditingAction == EditingAction.ShowNeighbours)
+            else
             {
                 if (target == null)
                 {
@@ -135,18 +140,13 @@ public class GameMaster : MonoBehaviour
                     return;
                 }
 
-                if (selectionManager.SingleSelectedObject == selectedAnchor)
+                if (CurrentEditingAction == EditingAction.ShowNeighbours)
                 {
-                    return;
+                    neighbourManager.ShowNeighbour(selectedAnchor);
                 }
-
-                ResetSelection();
-
-                selectionManager.SingleSelect(selectedAnchor);
-                foreach (string neighbourId in graphInfo.Nodes[selectedAnchor.AnchorId].NeighbourIds)
+                else if (CurrentEditingAction == EditingAction.OverrideNeighbours)
                 {
-                    AnchorHandler neighbour = existingAnchors[neighbourId];
-                    selectionManager.MultiSelect(neighbour);
+                    neighbourManager.OverrideNeighbourSelect(selectedAnchor);
                 }
             }
         }
@@ -190,6 +190,21 @@ public class GameMaster : MonoBehaviour
         }
 
         return null;
+    }
+
+    public void OverrideNeighbourIds(string masterAnchorId, List<string> neighbourIds)
+    {
+        graphInfo.Nodes[masterAnchorId].NeighbourIds = neighbourIds;
+    }
+
+    public void OverrideNeighbours()
+    {
+        neighbourManager.UpdateNeighbours();
+    }
+
+    public void ResetNeighbourSelection()
+    {
+        neighbourManager.Reset();
     }
 
     public AnchorHandler GetAnchorHandler(string anchorId)
@@ -274,12 +289,8 @@ public class GameMaster : MonoBehaviour
         }
 
         editingActionIndex = newActionIndex;
-        selectionManager.Reset();
-    }
-
-    public void ResetSelection()
-    {
-        selectionManager.Reset();
+        editingActionButtonControl.UpdateButtons(CurrentEditingAction);
+        neighbourManager.Reset();
     }
 
     public void ClearAllAnchors()
@@ -756,10 +767,6 @@ public class GameMaster : MonoBehaviour
 
         pathRenderer.positionCount = count;
         pathRenderer.SetPositions(positions);
-        foreach (Vector3 position in positions)
-        {
-            Debug.Log($"Line renderer positions: {position.x}, {position.y}, {position.z}");
-        }
     }
 
     [Serializable]

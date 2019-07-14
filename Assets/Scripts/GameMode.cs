@@ -7,6 +7,5 @@ using System.Threading.Tasks;
 public enum GameMode
 {
     Editing,
-    Debug,
     Release
 }

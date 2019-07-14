@@ -11,6 +11,12 @@ public class Console : MonoBehaviour
     [SerializeField]
     private Text uiText;
 
+    [SerializeField]
+    private RectTransform consoleContent;
+
+    [SerializeField]
+    private GameObject consoleUI;
+
     struct Log
     {
         public string message;
@@ -20,7 +26,8 @@ public class Console : MonoBehaviour
 
     List<string> messages = new List<string>();
 
-    private int maxMessageNumber = 100;
+    private const int maxMessageNumber = 500;
+    private bool showConsole;
 
     static readonly Dictionary<LogType, Color> logTypeColors = new Dictionary<LogType, Color>()
     {
@@ -31,6 +38,26 @@ public class Console : MonoBehaviour
         { LogType.Warning, Color.yellow },
     };
 
+    public void ScrollUp()
+    {
+        Vector2 position = consoleContent.anchoredPosition;
+        position.y -= 100;
+        consoleContent.anchoredPosition = position;
+    }
+
+    public void ScrollDown()
+    {
+        Vector2 position = consoleContent.anchoredPosition;
+        position.y += 100;
+        consoleContent.anchoredPosition = position;
+    }
+
+    public void ToggleConsole()
+    {
+        showConsole = !showConsole;
+        consoleUI.SetActive(showConsole);
+    }
+
     void OnEnable()
     {
         Application.logMessageReceived += HandleLog;
@@ -39,10 +66,6 @@ public class Console : MonoBehaviour
     void OnDisable()
     {
         Application.logMessageReceived -= HandleLog;
-    }
-
-    void Update()
-    {
     }
 
     void HandleLog(string message, string stackTrace, LogType type)

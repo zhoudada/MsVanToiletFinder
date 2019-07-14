@@ -21,10 +21,18 @@ public class SelectionManager
         if (MultiSelectedObjects.Contains(selectableObject))
         {
             MultiSelectedObjects.Remove(selectableObject);
-            selectableObject.OnMultiUnselected();
+            if (!selectableObject.Equals(null))
+            {
+                selectableObject.OnMultiUnselected();
+            }
         }
         else
         {
+            if (selectableObject.Equals(null))
+            {
+                return;
+            }
+
             MultiSelectedObjects.Add(selectableObject);
             selectableObject.OnMultiSelected();
         }

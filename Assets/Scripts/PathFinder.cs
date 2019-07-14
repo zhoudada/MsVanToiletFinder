@@ -1,9 +1,10 @@
-﻿using Gemini;
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text;
 using UnityEngine;
+using Priority_Queue;
 
 public class PathFinder
 {
@@ -28,19 +29,20 @@ public class PathFinder
             node.UpdateHeuristicWeight(endNode);
         }
 
-        IndexedPriorityQueue<PathNode> visitingNodes = new IndexedPriorityQueue<PathNode>(allNodes.Count);
+        SimplePriorityQueue<PathNode> visitingNodes = new SimplePriorityQueue<PathNode>();
         HashSet<PathNode> visitingNodesHashSet = new HashSet<PathNode>();
         //Dictionary<PathNode, List<string>> neighbourIds = GetNeighbourIds(allNodes);
         Dictionary<PathNode, List<string>> neighbourIds = GetNeighbourIdsFromCache(allNodes);
 
-        visitingNodes.Add(startNode);
+        visitingNodes.Enqueue(startNode, startNode.Priority);
         visitingNodesHashSet.Add(startNode);
 
         while (visitingNodes.Count > 0)
         {
-            PathNode node = visitingNodes.Pop();
+            PathNode node = visitingNodes.Dequeue();
             visitingNodesHashSet.Remove(node);
             node.IsVisited = true;
+
             if (node == endNode)
             {
                 Debug.Log("Path found.");
@@ -57,8 +59,11 @@ public class PathFinder
 
                 if (!visitingNodesHashSet.Contains(neighbour))
                 {
-                    visitingNodes.Add(neighbour);
+                    visitingNodes.Enqueue(neighbour, neighbour.Priority);
                     visitingNodesHashSet.Add(neighbour);
+                }
+                else
+                {
                 }
 
                 float distance = node.FindDistance(neighbour);
@@ -252,13 +257,14 @@ public class PathFinder
         throw new InvalidOperationException($"Unable to determine projected direction: {x}, {z}");
     }
 
-    private class PathNode: IComparable<PathNode>
+    private class PathNode
     {
         public bool IsVisited { get; set; }
         public AnchorHandler AnchorHandler { get; set; }
         public float ActualWeight { get; set; }
         public float HeuristicWeight { get; set; }
         public PathNode Parent { get; set; }
+        public float Priority => ActualWeight + HeuristicWeight;
 
         public PathNode(AnchorHandler handler)
         {
@@ -282,25 +288,6 @@ public class PathFinder
         public void UpdateHeuristicWeight(PathNode endNode)
         {
             HeuristicWeight = FindDistance(endNode);
-        }
-
-        public int CompareTo(PathNode other)
-        {
-            float selfScore = ActualWeight + HeuristicWeight;
-            float otherScore = other.ActualWeight + other.HeuristicWeight;
-
-            if (selfScore == otherScore)
-            {
-                return 0;
-            }
-            else if (selfScore > otherScore)
-            {
-                return 1;
-            }
-            else
-            {
-                return -1;
-            }
         }
     }
 }

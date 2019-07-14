@@ -1,6 +1,7 @@
 ﻿using Microsoft.MixedReality.Toolkit.Core.Utilities;
 using System.Collections;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -16,6 +17,8 @@ public class KeyboardManager : MonoBehaviour
 
     [SerializeField]
     private Vector3 offset = new Vector3(0, -0.1f, 0);
+
+    private Task showAsyncTask;
 
     private string CurrentText
     {
@@ -41,7 +44,7 @@ public class KeyboardManager : MonoBehaviour
             DestroyImmediate(gameObject);
         }
 
-        KeyboardUI.SetActive(false);
+        //KeyboardUI.SetActive(false);
         isVisible = false;
     }
 
@@ -58,9 +61,39 @@ public class KeyboardManager : MonoBehaviour
 
     public void Show(Vector3 position, string defaultText = "")
     {
+        if (showAsyncTask != null && !showAsyncTask.IsCompleted)
+        {
+            return;
+        }
+
+        showAsyncTask = ShowAsync(position, defaultText);
+    }
+
+    public void Hide()
+    {
+        foreach (Transform child in KeyboardUI.transform)
+        {
+            child.gameObject.SetActive(false);
+        }
+    }
+
+    private async Task ShowAsync(Vector3 position, string defaultText)
+    {
         CurrentText = defaultText;
-        KeyboardUI.SetActive(true);
         transform.position = position + offset;
+        int countToYield = 0;
+        foreach (Transform child in KeyboardUI.transform)
+        {
+            if (countToYield >= 3)
+            {
+                countToYield = 0;
+                await Task.Yield();
+            }
+
+            child.gameObject.SetActive(true);
+            countToYield++;
+        }
+        KeyboardUI.SetActive(true);
         isVisible = true;
     }
 
@@ -69,7 +102,7 @@ public class KeyboardManager : MonoBehaviour
         string text = currentText;
         Debug.Log($"Keyboard complete: {currentText}.");
         CurrentText = "";
-        KeyboardUI.SetActive(false);
+        Hide();
         isVisible = false;
 
         return text;
